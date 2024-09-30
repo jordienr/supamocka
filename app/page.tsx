@@ -16,12 +16,12 @@ import {
 import { faker } from "@faker-js/faker";
 import { Toaster, toast } from "sonner";
 
-export function ClientOnly({ children }: { children: React.ReactNode }) {
+function ClientOnly({ children }: { children: React.ReactNode }) {
   const isClient = useIsClient();
   return isClient ? children : null;
 }
 
-export default function Home() {
+function App() {
   const [accordions, setAccordions] = useLocalStorage("accordions", [
     "settings",
   ]);
@@ -93,149 +93,155 @@ export default function Home() {
   }, [adminClient, setUsers]);
 
   return (
-    <ClientOnly>
-      <div className="font-[family-name:var(--font-geist-sans)] p-4 max-w-xl mx-auto">
-        <Toaster position="top-right" />
-        <h1 className="p-3 font-medium text-lg text-center">supamocka</h1>
+    <div className="font-[family-name:var(--font-geist-sans)] p-4 max-w-xl mx-auto">
+      <Toaster position="top-right" />
+      <h1 className="p-3 font-medium text-lg text-center">supamocka</h1>
 
-        <div className="">
-          <Accordion
-            className="p-3"
-            type="multiple"
-            value={accordions}
-            onValueChange={setAccordions}
-          >
-            <AccordionItem value="settings">
-              <AccordionTrigger>Settings</AccordionTrigger>
-              <AccordionContent>
-                <div className="mt-2">
-                  <Label>API URL</Label>
-                  <Input
-                    value={settings.url}
-                    onChange={(e) =>
-                      setSettings({ ...settings, url: e.target.value })
-                    }
-                  />
-                  <Label>Public Key</Label>
-                  <Input
-                    value={settings.publicKey}
-                    onChange={(e) =>
-                      setSettings({ ...settings, publicKey: e.target.value })
-                    }
-                  />
-                  <Label>Service Key</Label>
-                  <Input
-                    type="password"
-                    value={settings.secretKey}
-                    onChange={(e) =>
-                      setSettings({ ...settings, secretKey: e.target.value })
-                    }
-                  />
-                  <div className="flex justify-end gap-4 items-center mt-4">
-                    <Link
-                      target="_blank"
-                      href="https://supabase.com/dashboard/project/_/settings/api"
-                    >
-                      Get API vars
-                    </Link>
-                  </div>
+      <div className="">
+        <Accordion
+          className="p-3"
+          type="multiple"
+          value={accordions}
+          onValueChange={setAccordions}
+        >
+          <AccordionItem value="settings">
+            <AccordionTrigger>Settings</AccordionTrigger>
+            <AccordionContent>
+              <div className="mt-2">
+                <Label>API URL</Label>
+                <Input
+                  value={settings.url}
+                  onChange={(e) =>
+                    setSettings({ ...settings, url: e.target.value })
+                  }
+                />
+                <Label>Public Key</Label>
+                <Input
+                  value={settings.publicKey}
+                  onChange={(e) =>
+                    setSettings({ ...settings, publicKey: e.target.value })
+                  }
+                />
+                <Label>Service Key</Label>
+                <Input
+                  type="password"
+                  value={settings.secretKey}
+                  onChange={(e) =>
+                    setSettings({ ...settings, secretKey: e.target.value })
+                  }
+                />
+                <div className="flex justify-end gap-4 items-center mt-4">
+                  <Link
+                    target="_blank"
+                    href="https://supabase.com/dashboard/project/_/settings/api"
+                  >
+                    Get API vars
+                  </Link>
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="create-user">
-              <AccordionTrigger>Create user</AccordionTrigger>
-              <AccordionContent>
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const request = adminClient.auth.admin
-                      .createUser({
-                        email,
-                        password: "TestPassword1",
-                      })
-                      .then((res) => {
-                        if (res.error) {
-                          throw res.error;
-                        }
-                        return res.data;
-                      });
-                    reqHandler({
-                      request,
-                      loadingMessage: "Creating user",
-                      successMessage: "User created",
-                      errorMessage: "Error creating user",
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="create-user">
+            <AccordionTrigger>Create user</AccordionTrigger>
+            <AccordionContent>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const request = adminClient.auth.admin
+                    .createUser({
+                      email,
+                      password: "TestPassword1",
+                    })
+                    .then((res) => {
+                      if (res.error) {
+                        throw res.error;
+                      }
+                      return res.data;
                     });
-                  }}
-                >
-                  <Label className="flex items-center">
-                    Email{" "}
-                    <button
-                      className="text-xs text-gray-500 underline p-2"
-                      type="button"
-                      onClick={() => setEmail(faker.internet.exampleEmail())}
-                    >
-                      Random
-                    </button>
-                  </Label>
-                  <Input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                  <div className="actions">
-                    <small className="px-2 py-1 border bg-zinc-100 rounded-sm space-x-2">
-                      <span className="text-zinc-500 select-none">
-                        Password
-                      </span>
-                      <span className="font-medium select-all">
-                        TestPassword1
-                      </span>
-                    </small>
-                    <Button>Create</Button>
-                  </div>
-                </form>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="users">
-              <AccordionTrigger>Users</AccordionTrigger>
-              <AccordionContent>
-                <div className="flex flex-col gap-2">
-                  {users.map((user) => (
-                    <div key={user.id}>{user.email}</div>
-                  ))}
+                  reqHandler({
+                    request,
+                    loadingMessage: "Creating user",
+                    successMessage: "User created",
+                    errorMessage: "Error creating user",
+                  });
+                }}
+              >
+                <Label className="flex items-center">
+                  Email{" "}
+                  <button
+                    className="text-xs text-gray-500 underline p-2"
+                    type="button"
+                    onClick={() => setEmail(faker.internet.exampleEmail())}
+                  >
+                    Random
+                  </button>
+                </Label>
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <div className="actions">
+                  <small className="px-2 py-1 border bg-zinc-100 rounded-sm space-x-2">
+                    <span className="text-zinc-500 select-none">Password</span>
+                    <span className="font-medium select-all">
+                      TestPassword1
+                    </span>
+                  </small>
+                  <Button>Create</Button>
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="polling">
-              <AccordionTrigger>Polling</AccordionTrigger>
-              <AccordionContent>
-                <div className="">
-                  <Label>Interval (ms)</Label>
-                  <Input
-                    value={pollingInterval}
-                    onChange={(e) => setPollingInterval(Number(e.target.value))}
-                  />
-                  <Label>Endpoint</Label>
-                  <Input
-                    value={pollingEndpoint}
-                    onChange={(e) => setPollingEndpoint(e.target.value)}
-                  />
-                  <div className="actions">
-                    <Link
-                      target="_blank"
-                      href="https://supabase.com/dashboard/project/_/api"
-                    >
-                      View Endpoints
-                    </Link>
-                    <Button onClick={() => setIsPolling(!isPolling)}>
-                      {isPolling ? "Stop" : "Start"}
-                    </Button>
-                  </div>
+              </form>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="users">
+            <AccordionTrigger>Users</AccordionTrigger>
+            <AccordionContent>
+              <div className="flex flex-col gap-2">
+                {users.map((user) => (
+                  <div key={user.id}>{user.email}</div>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="polling">
+            <AccordionTrigger>Polling</AccordionTrigger>
+            <AccordionContent>
+              <div className="">
+                <Label>Interval (ms)</Label>
+                <Input
+                  value={pollingInterval}
+                  onChange={(e) => setPollingInterval(Number(e.target.value))}
+                />
+                <Label>Endpoint</Label>
+                <Input
+                  value={pollingEndpoint}
+                  onChange={(e) => setPollingEndpoint(e.target.value)}
+                />
+                <div className="actions">
+                  <Link
+                    target="_blank"
+                    href="https://supabase.com/dashboard/project/_/api"
+                  >
+                    View Endpoints
+                  </Link>
+                  <Button onClick={() => setIsPolling(!isPolling)}>
+                    {isPolling ? "Stop" : "Start"}
+                  </Button>
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
-    </ClientOnly>
+    </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <div>
+      <ClientOnly>
+        <App />
+      </ClientOnly>
+    </div>
   );
 }
