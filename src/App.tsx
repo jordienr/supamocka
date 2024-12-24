@@ -121,7 +121,9 @@ export default function App() {
       <h1 className="p-3 font-medium text-lg text-center">supamocka</h1>
       <p className="text-xs text-center text-gray-500 border rounded-md p-2">
         This is a tool to mock usage for a Supabase project and test different
-        features. The API key will be stored in your browser's local storage.
+        features. The API key will be stored in your browser's local storage.{" "}
+        <br />
+        <b>Do not use for real or production projects.</b>
       </p>
 
       <div className="">
