@@ -460,6 +460,11 @@ export default function App() {
           )}
         </Accordion>
       </div>
+      <footer className="text-xs text-center text-gray-500 mt-4">
+        <a target="_blank" href="https://github.com/jordienr/supamocka">
+          GitHub
+        </a>
+      </footer>
     </div>
   );
 }
