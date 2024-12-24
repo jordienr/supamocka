@@ -23,13 +23,12 @@ export default function App() {
   const [settings, setSettings] = useLocalStorage("api", {
     url: "",
     publicKey: "",
-    secretKey: "",
   });
 
   const [email, setEmail] = useState("");
 
-  function adminClient() {
-    return createClient(settings.url, settings.secretKey);
+  function supaClient() {
+    return createClient(settings.url, settings.publicKey);
   }
 
   function reqHandler({
@@ -69,7 +68,12 @@ export default function App() {
   useEffect(() => {
     if (isPolling) {
       const interval = setInterval(async () => {
-        const res = await fetch(settings?.url + "/rest/v1" + pollingEndpoint);
+        const res = await fetch(settings?.url + "/rest/v1" + pollingEndpoint, {
+          headers: {
+            apikey: settings?.publicKey,
+            Authorization: `Bearer ${settings?.publicKey}`,
+          },
+        });
         toast.info("GET: " + pollingEndpoint + " " + res.status);
       }, pollingInterval);
       return () => clearInterval(interval);
@@ -80,7 +84,7 @@ export default function App() {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      const res = await adminClient()
+      const res = await supaClient()
         .auth.admin.listUsers()
         .then((res) => res.data);
       setUsers(res?.users);
@@ -88,12 +92,12 @@ export default function App() {
     fetchUsers();
   }, [setUsers]);
 
-  const hasSettings = settings.url && settings.secretKey && settings.publicKey;
+  const hasSettings = settings.url && settings.publicKey;
 
   const [files, setFiles] = useState<string[]>([]);
 
   async function loadFiles(bucket: string) {
-    const client = createClient(settings.url, settings.secretKey);
+    const client = createClient(settings.url, settings.publicKey);
     const res = await client.storage.from(bucket).list();
     if (res.data) {
       setFiles(res.data.map((file) => file.name));
@@ -122,7 +126,6 @@ export default function App() {
                   const formData = new FormData(e.currentTarget);
                   const url = formData.get("url") as string;
                   const publicKey = formData.get("publicKey") as string;
-                  const secretKey = formData.get("secretKey") as string;
 
                   if (typeof url !== "string") {
                     return;
@@ -131,21 +134,14 @@ export default function App() {
                   setSettings({
                     url,
                     publicKey,
-                    secretKey,
                   });
                 }}
                 className="mt-2"
               >
                 <Label>API URL</Label>
                 <Input name="url" defaultValue={settings?.url} />
-                <Label>Public Key</Label>
+                <Label>Service Role Key / Public Key</Label>
                 <Input name="publicKey" defaultValue={settings.publicKey} />
-                <Label>Service Key</Label>
-                <Input
-                  type="password"
-                  name="secretKey"
-                  defaultValue={settings.secretKey}
-                />
                 <div className="flex justify-end gap-4 items-center mt-4">
                   <a
                     target="_blank"
@@ -166,7 +162,7 @@ export default function App() {
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      const request = adminClient()
+                      const request = supaClient()
                         .auth.admin.createUser({
                           email,
                           password: "TestPassword1",
@@ -263,15 +259,13 @@ export default function App() {
                       const channel = formData.get("channel") as string;
                       const payload = formData.get("payload") as string;
 
-                      const client = createClient(
-                        settings.url,
-                        settings.secretKey
-                      );
-                      client.channel(channel).send({
-                        type: "broadcast",
-                        event: "test",
-                        payload: JSON.parse(payload),
-                      });
+                      supaClient()
+                        .channel(channel)
+                        .send({
+                          type: "broadcast",
+                          event: "test",
+                          payload: JSON.parse(payload),
+                        });
 
                       toast.success("Sent");
                     }}
@@ -300,12 +294,8 @@ export default function App() {
 
                       const randomFileName = faker.string.uuid();
 
-                      const client = createClient(
-                        settings.url,
-                        settings.secretKey
-                      );
-                      const res = client.storage
-                        .from(bucket)
+                      const res = supaClient()
+                        .storage.from(bucket)
                         .upload((fileName || file.name) + randomFileName, file);
 
                       toast.promise(res, {
