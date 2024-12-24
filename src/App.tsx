@@ -162,10 +162,15 @@ export default function App() {
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      const emailConfirm = formData.get(
+                        "email-confirm"
+                      ) as string;
                       const request = supaClient()
                         .auth.admin.createUser({
                           email,
                           password: "TestPassword1",
+                          email_confirm: emailConfirm === "on",
                         })
                         .then((res) => {
                           if (res.error) {
@@ -191,6 +196,15 @@ export default function App() {
                         Random
                       </button>
                     </Label>
+                    <Label>
+                      <input
+                        id="email-confirm"
+                        name="email-confirm"
+                        type="checkbox"
+                        defaultChecked={true}
+                      />
+                      Confirm email
+                    </Label>
                     <Input
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -204,17 +218,44 @@ export default function App() {
                           TestPassword1
                         </span>
                       </small>
+                      <Button
+                        onClick={() => {
+                          setEmail(faker.internet.exampleEmail());
+                        }}
+                      >
+                        Random + Create
+                      </Button>
                       <Button>Create</Button>
                     </div>
                   </form>
                 </AccordionContent>
               </AccordionItem>
-              <AccordionItem value="users">
-                <AccordionTrigger>Users</AccordionTrigger>
+              <AccordionItem value="auth">
+                <AccordionTrigger>Auth</AccordionTrigger>
                 <AccordionContent>
                   <div className="flex flex-col gap-2">
                     {users.map((user) => (
-                      <div key={user.id}>{user.email}</div>
+                      <div key={user.id} className="flex items-center gap-2">
+                        <span>{user.confirmed_at ? "✅" : "❌"}</span>
+                        <span>{user.email}</span>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            try {
+                              supaClient().auth.signInWithPassword({
+                                email: user.email || "",
+                                password: "TestPassword1",
+                              });
+                              toast.success("Logged in as " + user.email);
+                            } catch (error) {
+                              console.log(error);
+                              toast.error("Error logging in");
+                            }
+                          }}
+                        >
+                          Mock Login
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 </AccordionContent>
