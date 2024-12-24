@@ -159,14 +159,14 @@ export default function App() {
               >
                 <Label>API URL</Label>
                 <Input name="url" defaultValue={settings?.url} />
-                <Label>Service Role Key / Public Key</Label>
+                <Label>Service Role Key</Label>
                 <Input name="publicKey" defaultValue={settings.publicKey} />
                 <div className="flex justify-end gap-4 items-center mt-4">
                   <a
                     target="_blank"
                     href="https://supabase.com/dashboard/project/_/settings/api"
                   >
-                    Get API vars
+                    Get Service Role Key
                   </a>
                   <Button>Save</Button>
                 </div>
