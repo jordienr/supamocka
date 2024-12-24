@@ -117,7 +117,9 @@ export default function App() {
           onValueChange={setAccordions}
         >
           <AccordionItem value="settings">
-            <AccordionTrigger>Settings</AccordionTrigger>
+            <AccordionTrigger>
+              Settings {hasSettings ? "✅" : "❌"}
+            </AccordionTrigger>
             <AccordionContent>
               <form
                 onSubmit={(e) => {
@@ -135,6 +137,8 @@ export default function App() {
                     url,
                     publicKey,
                   });
+
+                  toast.success("Settings saved");
                 }}
                 className="mt-2"
               >
