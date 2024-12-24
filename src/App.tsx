@@ -96,11 +96,22 @@ export default function App() {
 
   const [files, setFiles] = useState<string[]>([]);
 
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      const res = await supaClient().auth.getUser();
+      setCurrentUser(res.data.user);
+    };
+    fetchCurrentUser();
+  }, []);
+
   async function loadFiles(bucket: string) {
     const client = createClient(settings.url, settings.publicKey);
     const res = await client.storage.from(bucket).list();
     if (res.data) {
       setFiles(res.data.map((file) => file.name));
+      toast.success(`Loaded ${res.data.length} files`);
     }
   }
 
@@ -108,6 +119,10 @@ export default function App() {
     <div className="font-mono p-4 max-w-xl mx-auto">
       <Toaster position="top-right" />
       <h1 className="p-3 font-medium text-lg text-center">supamocka</h1>
+      <p className="text-xs text-center text-gray-500 border rounded-md p-2">
+        This is a tool to mock usage for a Supabase project and test different
+        features. The API key will be stored in your browser's local storage.
+      </p>
 
       <div className="">
         <Accordion
@@ -238,18 +253,34 @@ export default function App() {
                 <AccordionTrigger>Auth</AccordionTrigger>
                 <AccordionContent>
                   <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Current user</Label>
+                      <button
+                        onClick={() => {
+                          supaClient().auth.signOut();
+                          setCurrentUser(null);
+                        }}
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                    <pre className="max-h-[200px] overflow-y-auto bg-zinc-100 rounded-md p-2">
+                      {JSON.stringify(currentUser || {}, null, 2)}
+                    </pre>
                     {users.map((user) => (
                       <div key={user.id} className="flex items-center gap-2">
                         <span>{user.confirmed_at ? "✅" : "❌"}</span>
                         <span>{user.email}</span>
                         <Button
                           variant="outline"
-                          onClick={() => {
+                          onClick={async () => {
                             try {
-                              supaClient().auth.signInWithPassword({
-                                email: user.email || "",
-                                password: "TestPassword1",
-                              });
+                              const res =
+                                await supaClient().auth.signInWithPassword({
+                                  email: user.email || "",
+                                  password: "TestPassword1",
+                                });
+                              setCurrentUser(res.data?.user);
                               toast.success("Logged in as " + user.email);
                             } catch (error) {
                               console.log(error);
@@ -341,17 +372,48 @@ export default function App() {
 
                       const res = supaClient()
                         .storage.from(bucket)
-                        .upload((fileName || file.name) + randomFileName, file);
+                        .upload((fileName || file.name) + randomFileName, file)
+                        .then((res) => {
+                          if (res.error) {
+                            throw res.error;
+                          }
+                          return res.data;
+                        });
 
                       toast.promise(res, {
                         loading: "Uploading...",
                         success: "Uploaded",
-                        error: "Error uploading",
+                        error: (error) => "Error uploading: " + error.message,
                       });
                     }}
                   >
                     <Label>Bucket</Label>
                     <Input name="bucket" defaultValue="test" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const res = supaClient()
+                          .storage.createBucket("test")
+                          .then((res) => {
+                            if (res.error) {
+                              throw res.error;
+                            }
+                            return res.data;
+                          });
+
+                        toast.promise(res, {
+                          loading: "Creating bucket",
+                          success: "Bucket created",
+                          error: (error) =>
+                            "Error creating bucket: " + error.message,
+                        });
+                      }}
+                    >
+                      Create bucket
+                    </button>
                     <Label>File name</Label>
                     <Input
                       name="fileName"
@@ -372,7 +434,7 @@ export default function App() {
                     {files.map((file) => (
                       <div
                         key={file}
-                        className="p-2 border-b hover:bg-zinc-100"
+                        className="p-2 border-b hover:bg-zinc-100 min-h-[30px]"
                       >
                         {file}
                       </div>
