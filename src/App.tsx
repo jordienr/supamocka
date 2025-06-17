@@ -25,6 +25,8 @@ export default function App() {
     publicKey: "",
   });
 
+  // $npx shadcn@latest add http://localhost:3004/ui/r/current-user-avatar-react.json
+
   const [email, setEmail] = useState("");
 
   function supaClient() {
@@ -71,7 +73,6 @@ export default function App() {
         const res = await fetch(settings?.url + "/rest/v1" + pollingEndpoint, {
           headers: {
             apikey: settings?.publicKey,
-            Authorization: `Bearer ${settings?.publicKey}`,
           },
         });
         toast.info("GET: " + pollingEndpoint + " " + res.status);
@@ -99,6 +100,56 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
+      supaClient().auth.getUser().then(({ data, error }) => {
+        if (error) {
+          toast.error("Error getting user: " + error.message);
+          return;
+        }
+        setCurrentUser(data.user);
+        toast.success("Signed in as " + data.user?.email);
+      });
+
+  }, []);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const provider = urlParams.get('provider');
+
+    if (code && provider) {
+      supaClient().auth.signInWithIdToken({
+        provider,
+        token: code,
+      }).then(({ data, error }) => {
+        if (error) {
+          toast.error("Error signing in with " + provider);
+        }
+        setCurrentUser(data.user);
+        toast.success("Signed in as " + data.user?.email);
+      });
+    }
+  }, []);
+
+  async function handleOAuthSignIn(provider: 'github') {
+    try {
+      const { error } = await supaClient().auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) {
+        toast.error("Error signing in with " + provider);
+        throw error;
+      }
+      toast.success("Redirecting to " + provider);
+    } catch (error) {
+      console.log(error);
+      toast.error("Error signing in with " + provider);
+    }
+  }
+
+  useEffect(() => {
     const fetchCurrentUser = async () => {
       const res = await supaClient().auth.getUser();
       setCurrentUser(res.data.user);
@@ -121,7 +172,7 @@ export default function App() {
       <h1 className="p-3 font-medium text-lg text-center">supamocka</h1>
       <p className="text-xs text-center text-gray-500 border rounded-md p-2">
         This is a tool to mock usage for a Supabase project and test different
-        features. The API key will be stored in your browser's local storage.{" "}`
+        features. The API key will be stored in your browser's local storage. `
         <br />
         <b>Do not use for real or production projects.</b>
       </p>
@@ -257,18 +308,45 @@ export default function App() {
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <Label>Current user</Label>
-                      <button
-                        onClick={() => {
-                          supaClient().auth.signOut();
-                          setCurrentUser(null);
-                        }}
-                      >
-                        Sign out
-                      </button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleOAuthSignIn('github')}
+                        >
+                          Sign in with GitHub
+                        </Button>
+                        <button
+                          onClick={() => {
+                            supaClient().auth.signOut().then(() => {
+                              setCurrentUser(null);
+                              toast.success("Signed out");
+                            });
+                          }}
+                        >
+                          Sign out
+                        </button>
+                      </div>
                     </div>
                     <pre className="max-h-[200px] overflow-y-auto bg-zinc-100 rounded-md p-2">
                       {JSON.stringify(currentUser || {}, null, 2)}
                     </pre>
+                    {currentUser && currentUser.email && (
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const { error } = await supaClient().auth.resetPasswordForEmail(currentUser.email!);
+                            if (error) throw error;
+                            toast.success("Reset password email sent to " + currentUser.email);
+                          } catch (error) {
+                            console.log(error);
+                            toast.error("Error sending reset password email");
+                          }
+                        }}
+                      >
+                        Send reset password email
+                      </Button>
+                    )}
                     {users.map((user) => (
                       <div key={user.id} className="flex items-center gap-2">
                         <span>{user.confirmed_at ? "✅" : "❌"}</span>
