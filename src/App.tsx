@@ -4,7 +4,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { createClient, User } from "@supabase/supabase-js";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -15,15 +15,102 @@ import { faker } from "@faker-js/faker";
 import { Toaster, toast } from "sonner";
 import { useLocalStorage } from "@uidotdev/usehooks";
 
+type Project = {
+  id: string;
+  name: string;
+  url: string;
+  publicKey: string;
+};
+
+const generateProjectId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+};
+
 export default function App() {
   const [accordions, setAccordions] = useLocalStorage("accordions", [
     "settings",
   ]);
 
-  const [settings, setSettings] = useLocalStorage("api", {
+  const [projects, setProjects] = useLocalStorage<Project[]>("projects", []);
+  const [activeProjectId, setActiveProjectId] = useLocalStorage<
+    string | null
+  >("active-project-id", null);
+
+  useEffect(() => {
+    if (!projects.length) {
+      const id = generateProjectId();
+      setProjects([
+        {
+          id,
+          name: "Project 1",
+          url: "",
+          publicKey: "",
+        },
+      ]);
+      setActiveProjectId(id);
+      return;
+    }
+
+    if (!activeProjectId) {
+      setActiveProjectId(projects[0].id);
+    }
+  }, [activeProjectId, projects, setActiveProjectId, setProjects]);
+
+  const activeProject = useMemo(() => {
+    if (!projects.length) {
+      return null;
+    }
+    return (
+      projects.find((project) => project.id === activeProjectId) ?? projects[0]
+    );
+  }, [activeProjectId, projects]);
+
+  const settings = activeProject ?? {
+    id: "",
+    name: "",
     url: "",
     publicKey: "",
-  });
+  };
+
+  const hasSettings = Boolean(settings.url && settings.publicKey);
+
+  const updateActiveProject = (values: Partial<Project>) => {
+    setProjects((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+      const targetId = activeProject?.id ?? prev[0].id;
+      return prev.map((project) =>
+        project.id === targetId ? { ...project, ...values } : project
+      );
+    });
+  };
+
+  const createProject = () => {
+    const id = generateProjectId();
+    setProjects((prev) => {
+      const project: Project = {
+        id,
+        name: `Project ${prev.length + 1}`,
+        url: "",
+        publicKey: "",
+      };
+      return [...prev, project];
+    });
+    setActiveProjectId(id);
+    toast.success("Project created");
+  };
+
+  const handleSelectProject = (id: string) => {
+    if (id === activeProject?.id) {
+      return;
+    }
+    setActiveProjectId(id);
+    toast.success("Project selected");
+  };
 
   // $npx shadcn@latest add http://localhost:3004/ui/r/current-user-avatar-react.json
 
@@ -68,22 +155,29 @@ export default function App() {
   const [isPolling, setIsPolling] = useState(false);
 
   useEffect(() => {
-    if (isPolling) {
-      const interval = setInterval(async () => {
-        const res = await fetch(settings?.url + "/rest/v1" + pollingEndpoint, {
-          headers: {
-            apikey: settings?.publicKey,
-          },
-        });
-        toast.info("GET: " + pollingEndpoint + " " + res.status);
-      }, pollingInterval);
-      return () => clearInterval(interval);
+    if (!hasSettings || !isPolling) {
+      return;
     }
-  }, [isPolling, pollingInterval, pollingEndpoint, settings?.url]);
+
+    const interval = setInterval(async () => {
+      const res = await fetch(settings.url + "/rest/v1" + pollingEndpoint, {
+        headers: {
+          apikey: settings.publicKey,
+        },
+      });
+      toast.info("GET: " + pollingEndpoint + " " + res.status);
+    }, pollingInterval);
+    return () => clearInterval(interval);
+  }, [hasSettings, isPolling, pollingEndpoint, pollingInterval, settings.publicKey, settings.url]);
 
   const [users, setUsers] = useLocalStorage<User[]>("users", []);
 
   useEffect(() => {
+    if (!hasSettings) {
+      setUsers([]);
+      return;
+    }
+
     const fetchUsers = async () => {
       const res = await supaClient()
         .auth.admin.listUsers()
@@ -91,16 +185,26 @@ export default function App() {
       setUsers(res?.users);
     };
     fetchUsers();
-  }, [setUsers]);
-
-  const hasSettings = settings.url && settings.publicKey;
+  }, [hasSettings, settings.publicKey, settings.url, setUsers]);
 
   const [files, setFiles] = useState<string[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-      supaClient().auth.getUser().then(({ data, error }) => {
+    if (!hasSettings) {
+      setCurrentUser(null);
+    }
+  }, [hasSettings]);
+
+  useEffect(() => {
+    if (!hasSettings) {
+      return;
+    }
+
+    supaClient()
+      .auth.getUser()
+      .then(({ data, error }) => {
         if (error) {
           toast.error("Error getting user: " + error.message);
           return;
@@ -108,27 +212,32 @@ export default function App() {
         setCurrentUser(data.user);
         toast.success("Signed in as " + data.user?.email);
       });
-
-  }, []);
+  }, [hasSettings, settings.publicKey, settings.url]);
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const provider = urlParams.get('provider');
-
-    if (code && provider) {
-      supaClient().auth.signInWithIdToken({
-        provider,
-        token: code,
-      }).then(({ data, error }) => {
-        if (error) {
-          toast.error("Error signing in with " + provider);
-        }
-        setCurrentUser(data.user);
-        toast.success("Signed in as " + data.user?.email);
-      });
+    if (!hasSettings) {
+      return;
     }
-  }, []);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get("code");
+    const provider = urlParams.get("provider");
+
+    if (code && provider === "github") {
+      supaClient()
+        .auth.signInWithIdToken({
+          provider,
+          token: code,
+        })
+        .then(({ data, error }) => {
+          if (error) {
+            toast.error("Error signing in with " + provider);
+          }
+          setCurrentUser(data.user);
+          toast.success("Signed in as " + data.user?.email);
+        });
+    }
+  }, [hasSettings, settings.publicKey, settings.url]);
 
   async function handleOAuthSignIn(provider: 'github') {
     try {
@@ -150,12 +259,16 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!hasSettings) {
+      return;
+    }
+
     const fetchCurrentUser = async () => {
       const res = await supaClient().auth.getUser();
       setCurrentUser(res.data.user);
     };
     fetchCurrentUser();
-  }, []);
+  }, [hasSettings, settings.publicKey, settings.url]);
 
   async function loadFiles(bucket: string) {
     const client = createClient(settings.url, settings.publicKey);
@@ -178,6 +291,26 @@ export default function App() {
       </p>
 
       <div className="">
+        <div className="p-3 border rounded-md mb-4 space-y-2">
+          <Label htmlFor="project-select">Active project</Label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <select
+              id="project-select"
+              className="flex-1 border rounded-md px-2 py-1"
+              value={settings.id}
+              onChange={(event) => handleSelectProject(event.target.value)}
+            >
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name || "Unnamed project"}
+                </option>
+              ))}
+            </select>
+            <Button type="button" variant="outline" onClick={createProject}>
+              New project
+            </Button>
+          </div>
+        </div>
         <Accordion
           className="p-3"
           type="multiple"
@@ -194,22 +327,30 @@ export default function App() {
                   e.preventDefault();
 
                   const formData = new FormData(e.currentTarget);
-                  const url = formData.get("url") as string;
-                  const publicKey = formData.get("publicKey") as string;
+                  const url = formData.get("url");
+                  const publicKey = formData.get("publicKey");
+                  const name = formData.get("name");
 
-                  if (typeof url !== "string") {
+                  if (
+                    typeof url !== "string" ||
+                    typeof publicKey !== "string" ||
+                    typeof name !== "string"
+                  ) {
                     return;
                   }
 
-                  setSettings({
+                  updateActiveProject({
                     url,
                     publicKey,
+                    name,
                   });
 
                   toast.success("Settings saved");
                 }}
                 className="mt-2"
               >
+                <Label>Project name</Label>
+                <Input name="name" defaultValue={settings.name} />
                 <Label>API URL</Label>
                 <Input name="url" defaultValue={settings?.url} />
                 <Label>Service Role Key</Label>
