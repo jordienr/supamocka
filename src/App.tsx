@@ -3,14 +3,9 @@
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
+import { Plus } from "lucide-react";
 import { createClient, User } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./components/ui/accordion";
 import { faker } from "@faker-js/faker";
 import { Toaster, toast } from "sonner";
 import { useLocalStorage } from "@uidotdev/usehooks";
@@ -22,6 +17,16 @@ type Project = {
   publicKey: string;
 };
 
+type SectionId = "settings" | "auth" | "data-api" | "realtime" | "storage";
+
+const SECTIONS: { id: SectionId; label: string; requiresSettings?: boolean }[] = [
+  { id: "settings", label: "Settings" },
+  { id: "auth", label: "Auth", requiresSettings: true },
+  { id: "data-api", label: "Data API", requiresSettings: true },
+  { id: "realtime", label: "Realtime", requiresSettings: true },
+  { id: "storage", label: "Storage", requiresSettings: true },
+];
+
 const generateProjectId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -30,14 +35,14 @@ const generateProjectId = () => {
 };
 
 export default function App() {
-  const [accordions, setAccordions] = useLocalStorage("accordions", [
-    "settings",
-  ]);
-
   const [projects, setProjects] = useLocalStorage<Project[]>("projects", []);
   const [activeProjectId, setActiveProjectId] = useLocalStorage<
     string | null
   >("active-project-id", null);
+  const [activeSection, setActiveSection] = useLocalStorage<SectionId>(
+    "active-section",
+    "settings"
+  );
 
   useEffect(() => {
     if (!projects.length) {
@@ -58,6 +63,12 @@ export default function App() {
       setActiveProjectId(projects[0].id);
     }
   }, [activeProjectId, projects, setActiveProjectId, setProjects]);
+
+  useEffect(() => {
+    if (!SECTIONS.some((section) => section.id === activeSection)) {
+      setActiveSection("settings");
+    }
+  }, [activeSection, setActiveSection]);
 
   const activeProject = useMemo(() => {
     if (!projects.length) {
@@ -104,6 +115,32 @@ export default function App() {
     toast.success("Project created");
   };
 
+  const deleteActiveProject = () => {
+    if (!activeProject) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Delete project "${activeProject.name || "Unnamed project"}"?`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setProjects((prev) => {
+      const updated = prev.filter((project) => project.id !== activeProject.id);
+      if (!updated.length) {
+        setActiveProjectId(null);
+      } else if (activeProject.id === activeProjectId) {
+        setActiveProjectId(updated[0].id);
+      }
+      return updated;
+    });
+
+    toast.success("Project deleted");
+  };
+
   const handleSelectProject = (id: string) => {
     if (id === activeProject?.id) {
       return;
@@ -115,6 +152,7 @@ export default function App() {
   // $npx shadcn@latest add http://localhost:3004/ui/r/current-user-avatar-react.json
 
   const [email, setEmail] = useState("");
+  const [shouldConfirmEmail, setShouldConfirmEmail] = useState(true);
 
   function supaClient() {
     return createClient(settings.url, settings.publicKey);
@@ -279,49 +317,61 @@ export default function App() {
     }
   }
 
-  return (
-    <div className="font-mono p-4 max-w-xl mx-auto">
-      <Toaster position="top-right" />
-      <h1 className="p-3 font-medium text-lg text-center">supamocka</h1>
-      <p className="text-xs text-center text-gray-500 border rounded-md p-2">
-        This is a tool to mock usage for a Supabase project and test different
-        features. The API key will be stored in your browser's local storage. `
-        <br />
-        <b>Do not use for real or production projects.</b>
-      </p>
+  const renderUnavailable = (message: string) => (
+    <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+      {message}
+    </div>
+  );
 
-      <div className="">
-        <div className="p-3 border rounded-md mb-4 space-y-2">
-          <Label htmlFor="project-select">Active project</Label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <select
-              id="project-select"
-              className="flex-1 border rounded-md px-2 py-1"
-              value={settings.id}
-              onChange={(event) => handleSelectProject(event.target.value)}
-            >
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name || "Unnamed project"}
-                </option>
-              ))}
-            </select>
-            <Button type="button" variant="outline" onClick={createProject}>
-              New project
-            </Button>
-          </div>
-        </div>
-        <Accordion
-          className="p-3"
-          type="multiple"
-          value={accordions}
-          onValueChange={setAccordions}
-        >
-          <AccordionItem value="settings">
-            <AccordionTrigger>
-              Settings {hasSettings ? "✅" : "❌"}
-            </AccordionTrigger>
-            <AccordionContent>
+  const handleCreateUser = (emailAddress: string) => {
+    const normalizedEmail = emailAddress.trim();
+    if (!normalizedEmail) {
+      toast.error("Enter an email before creating a user");
+      return;
+    }
+
+    setEmail(normalizedEmail);
+
+    const request = supaClient()
+      .auth.admin.createUser({
+        email: normalizedEmail,
+        password: "TestPassword1",
+        email_confirm: shouldConfirmEmail,
+      })
+      .then((res) => {
+        if (res.error) {
+          throw res.error;
+        }
+        return res.data;
+      })
+      .then(async (data) => {
+        try {
+          const response = await supaClient().auth.admin.listUsers();
+          setUsers(response.data?.users ?? []);
+        } catch (error) {
+          console.log(error);
+        }
+        return data;
+      });
+
+    reqHandler({
+      request,
+      loadingMessage: "Creating user",
+      successMessage: "User created",
+      errorMessage: "Error creating user",
+    });
+  };
+
+  const renderSection = () => {
+    switch (activeSection) {
+      case "settings":
+        return (
+          <section className="space-y-6">
+            <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-lg font-semibold">Settings</h2>
+                <span className="text-sm">{hasSettings ? "✅" : "❌"}</span>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -347,7 +397,7 @@ export default function App() {
 
                   toast.success("Settings saved");
                 }}
-                className="mt-2"
+                className="mt-6"
               >
                 <Label>Project name</Label>
                 <Input name="name" defaultValue={settings.name} />
@@ -355,337 +405,447 @@ export default function App() {
                 <Input name="url" defaultValue={settings?.url} />
                 <Label>Service Role Key</Label>
                 <Input name="publicKey" defaultValue={settings.publicKey} />
-                <div className="flex justify-end gap-4 items-center mt-4">
+                <div className="actions">
                   <a
                     target="_blank"
                     href="https://supabase.com/dashboard/project/_/settings/api"
                   >
                     Get Service Role Key
                   </a>
-                  <Button>Save</Button>
+                  <Button type="submit">Save</Button>
                 </div>
               </form>
-            </AccordionContent>
-          </AccordionItem>
-          {hasSettings && (
-            <>
-              <AccordionItem value="create-user">
-                <AccordionTrigger>Create user</AccordionTrigger>
-                <AccordionContent>
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.currentTarget);
-                      const emailConfirm = formData.get(
-                        "email-confirm"
-                      ) as string;
-                      const request = supaClient()
-                        .auth.admin.createUser({
-                          email,
-                          password: "TestPassword1",
-                          email_confirm: emailConfirm === "on",
-                        })
-                        .then((res) => {
-                          if (res.error) {
-                            throw res.error;
-                          }
-                          return res.data;
-                        });
-                      reqHandler({
-                        request,
-                        loadingMessage: "Creating user",
-                        successMessage: "User created",
-                        errorMessage: "Error creating user",
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={deleteActiveProject}
+                disabled={!activeProject}
+              >
+                Delete project
+              </Button>
+            </div>
+          </section>
+        );
+      case "auth":
+        if (!hasSettings) {
+          return renderUnavailable(
+            "Add your Supabase settings to use the auth tools."
+          );
+        }
+
+        return (
+          <div className="space-y-6">
+            <section className="rounded-lg border bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">Create user</h2>
+              <form
+                className="mt-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreateUser(email);
+                }}
+              >
+                <Label className="flex items-center gap-2">
+                  Email
+                  <button
+                    className="text-xs text-gray-500 underline"
+                    type="button"
+                    onClick={() => setEmail(faker.internet.exampleEmail())}
+                  >
+                    Random
+                  </button>
+                </Label>
+                <Label className="flex items-center gap-2">
+                  <input
+                    id="email-confirm"
+                    name="email-confirm"
+                    type="checkbox"
+                    checked={shouldConfirmEmail}
+                    onChange={(event) => setShouldConfirmEmail(event.target.checked)}
+                  />
+                  Confirm email
+                </Label>
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <div className="actions">
+                  <small className="px-2 py-1 border bg-zinc-100 rounded-sm space-x-2">
+                    <span className="text-zinc-500 select-none">Password</span>
+                    <span className="font-medium select-all">TestPassword1</span>
+                  </small>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const generatedEmail = faker.internet.exampleEmail();
+                      setEmail(generatedEmail);
+                      handleCreateUser(generatedEmail);
+                    }}
+                  >
+                    Random + Create
+                  </Button>
+                  <Button type="submit">Create</Button>
+                </div>
+              </form>
+            </section>
+
+            <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Auth</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Manage the current session and existing users.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleOAuthSignIn("github")}
+                  >
+                    Sign in with GitHub
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      supaClient().auth.signOut().then(() => {
+                        setCurrentUser(null);
+                        toast.success("Signed out");
                       });
                     }}
                   >
-                    <Label className="flex items-center">
-                      Email{" "}
-                      <button
-                        className="text-xs text-gray-500 underline p-2"
-                        type="button"
-                        onClick={() => setEmail(faker.internet.exampleEmail())}
-                      >
-                        Random
-                      </button>
-                    </Label>
-                    <Label>
-                      <input
-                        id="email-confirm"
-                        name="email-confirm"
-                        type="checkbox"
-                        defaultChecked={true}
-                      />
-                      Confirm email
-                    </Label>
-                    <Input
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                    <div className="actions">
-                      <small className="px-2 py-1 border bg-zinc-100 rounded-sm space-x-2">
-                        <span className="text-zinc-500 select-none">
-                          Password
-                        </span>
-                        <span className="font-medium select-all">
-                          TestPassword1
-                        </span>
-                      </small>
-                      <Button
-                        onClick={() => {
-                          setEmail(faker.internet.exampleEmail());
-                        }}
-                      >
-                        Random + Create
-                      </Button>
-                      <Button>Create</Button>
-                    </div>
-                  </form>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="auth">
-                <AccordionTrigger>Auth</AccordionTrigger>
-                <AccordionContent>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Current user</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => handleOAuthSignIn('github')}
-                        >
-                          Sign in with GitHub
-                        </Button>
-                        <button
-                          onClick={() => {
-                            supaClient().auth.signOut().then(() => {
-                              setCurrentUser(null);
-                              toast.success("Signed out");
-                            });
-                          }}
-                        >
-                          Sign out
-                        </button>
-                      </div>
-                    </div>
-                    <pre className="max-h-[200px] overflow-y-auto bg-zinc-100 rounded-md p-2">
-                      {JSON.stringify(currentUser || {}, null, 2)}
-                    </pre>
-                    {currentUser && currentUser.email && (
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          try {
-                            const { error } = await supaClient().auth.resetPasswordForEmail(currentUser.email!);
-                            if (error) throw error;
-                            toast.success("Reset password email sent to " + currentUser.email);
-                          } catch (error) {
-                            console.log(error);
-                            toast.error("Error sending reset password email");
-                          }
-                        }}
-                      >
-                        Send reset password email
-                      </Button>
-                    )}
-                    {users.map((user) => (
-                      <div key={user.id} className="flex items-center gap-2">
-                        <span>{user.confirmed_at ? "✅" : "❌"}</span>
-                        <span>{user.email}</span>
-                        <Button
-                          variant="outline"
-                          onClick={async () => {
-                            try {
-                              const res =
-                                await supaClient().auth.signInWithPassword({
-                                  email: user.email || "",
-                                  password: "TestPassword1",
-                                });
-                              setCurrentUser(res.data?.user);
-                              toast.success("Logged in as " + user.email);
-                            } catch (error) {
-                              console.log(error);
-                              toast.error("Error logging in");
-                            }
-                          }}
-                        >
-                          Mock Login
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="polling">
-                <AccordionTrigger>Polling</AccordionTrigger>
-                <AccordionContent>
-                  <div className="">
-                    <Label>Interval (ms)</Label>
-                    <Input
-                      value={pollingInterval}
-                      onChange={(e) =>
-                        setPollingInterval(Number(e.target.value))
-                      }
-                    />
-                    <Label>Endpoint</Label>
-                    <Input
-                      value={pollingEndpoint}
-                      onChange={(e) => setPollingEndpoint(e.target.value)}
-                    />
-                    <div className="actions">
-                      <a
-                        target="_blank"
-                        href="https://supabase.com/dashboard/project/_/api"
-                      >
-                        View Endpoints
-                      </a>
-                      <Button onClick={() => setIsPolling(!isPolling)}>
-                        {isPolling ? "Stop" : "Start"}
-                      </Button>
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="realtime">
-                <AccordionTrigger>Realtime</AccordionTrigger>
-                <AccordionContent>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.currentTarget);
-                      const channel = formData.get("channel") as string;
-                      const payload = formData.get("payload") as string;
-
-                      supaClient()
-                        .channel(channel)
-                        .send({
-                          type: "broadcast",
-                          event: "test",
-                          payload: JSON.parse(payload),
-                        });
-
-                      toast.success("Sent");
-                    }}
-                  >
-                    <Label>Channel</Label>
-                    <Input />
-                    <Label>Payload</Label>
-                    <Input />
-                    <div className="flex justify-end mt-4">
-                      <Button>Send</Button>
-                    </div>
-                  </form>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="storage-upload">
-                <AccordionTrigger>Upload files</AccordionTrigger>
-                <AccordionContent>
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-
-                      const formData = new FormData(e.currentTarget);
-                      const file = formData.get("file") as File;
-                      const bucket = formData.get("bucket") as string;
-                      const fileName = formData.get("fileName") as string;
-
-                      const randomFileName = faker.string.uuid();
-
-                      const res = supaClient()
-                        .storage.from(bucket)
-                        .upload((fileName || file.name) + randomFileName, file)
-                        .then((res) => {
-                          if (res.error) {
-                            throw res.error;
-                          }
-                          return res.data;
-                        });
-
-                      toast.promise(res, {
-                        loading: "Uploading...",
-                        success: "Uploaded",
-                        error: (error) => "Error uploading: " + error.message,
-                      });
-                    }}
-                  >
-                    <Label>Bucket</Label>
-                    <Input name="bucket" defaultValue="test" />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const res = supaClient()
-                          .storage.createBucket("test")
-                          .then((res) => {
-                            if (res.error) {
-                              throw res.error;
-                            }
-                            return res.data;
+                    Sign out
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label>Current user</Label>
+                <pre className="max-h-[200px] overflow-y-auto bg-zinc-100 rounded-md p-2 text-xs">
+                  {JSON.stringify(currentUser || {}, null, 2)}
+                </pre>
+              </div>
+              {currentUser && currentUser.email && (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const { error } = await supaClient().auth.resetPasswordForEmail(
+                        currentUser.email!
+                      );
+                      if (error) throw error;
+                      toast.success(
+                        "Reset password email sent to " + currentUser.email
+                      );
+                    } catch (error) {
+                      console.log(error);
+                      toast.error("Error sending reset password email");
+                    }
+                  }}
+                >
+                  Send reset password email
+                </Button>
+              )}
+              <div className="space-y-2">
+                {users.map((user) => (
+                  <div key={user.id} className="flex flex-wrap items-center gap-2">
+                    <span>{user.confirmed_at ? "✅" : "❌"}</span>
+                    <span className="font-medium">{user.email}</span>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          const res = await supaClient().auth.signInWithPassword({
+                            email: user.email || "",
+                            password: "TestPassword1",
                           });
-
-                        toast.promise(res, {
-                          loading: "Creating bucket",
-                          success: "Bucket created",
-                          error: (error) =>
-                            "Error creating bucket: " + error.message,
-                        });
+                          setCurrentUser(res.data?.user);
+                          toast.success("Logged in as " + user.email);
+                        } catch (error) {
+                          console.log(error);
+                          toast.error("Error logging in");
+                        }
                       }}
                     >
-                      Create bucket
-                    </button>
-                    <Label>File name</Label>
-                    <Input
-                      name="fileName"
-                      placeholder="Leave empty for random"
-                    />
-                    <Label>File</Label>
-                    <Input name="file" type="file" />
-                    <div className="flex justify-end mt-4">
-                      <Button>Upload</Button>
-                    </div>
-                  </form>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="storage-list">
-                <AccordionTrigger>List files</AccordionTrigger>
-                <AccordionContent>
-                  <div className="max-h-[200px] overflow-y-auto border rounded-md">
-                    {files.map((file) => (
-                      <div
-                        key={file}
-                        className="p-2 border-b hover:bg-zinc-100 min-h-[30px]"
-                      >
-                        {file}
-                      </div>
-                    ))}
+                      Mock Login
+                    </Button>
                   </div>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.currentTarget);
-                      const bucket = formData.get("bucket") as string;
-                      loadFiles(bucket);
-                    }}
+                ))}
+              </div>
+            </section>
+          </div>
+        );
+      case "data-api":
+        if (!hasSettings) {
+          return renderUnavailable(
+            "Add your Supabase settings to try the data API tools."
+          );
+        }
+
+        return (
+          <section className="rounded-lg border bg-card p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Data API</h2>
+            <div className="mt-4 space-y-2">
+              <Label>Interval (ms)</Label>
+              <Input
+                value={pollingInterval}
+                onChange={(e) => setPollingInterval(Number(e.target.value))}
+              />
+              <Label>Endpoint</Label>
+              <Input
+                value={pollingEndpoint}
+                onChange={(e) => setPollingEndpoint(e.target.value)}
+              />
+              <div className="actions">
+                <a target="_blank" href="https://supabase.com/dashboard/project/_/api">
+                  View Endpoints
+                </a>
+                <Button onClick={() => setIsPolling(!isPolling)}>
+                  {isPolling ? "Stop" : "Start"}
+                </Button>
+              </div>
+            </div>
+          </section>
+        );
+      case "realtime":
+        if (!hasSettings) {
+          return renderUnavailable(
+            "Add your Supabase settings to use realtime tools."
+          );
+        }
+
+        return (
+          <section className="rounded-lg border bg-card p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Realtime</h2>
+            <form
+              className="mt-4 space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const channel = formData.get("channel") as string;
+                const payload = formData.get("payload") as string;
+
+                supaClient()
+                  .channel(channel)
+                  .send({
+                    type: "broadcast",
+                    event: "test",
+                    payload: JSON.parse(payload),
+                  });
+
+                toast.success("Sent");
+              }}
+            >
+              <Label>Channel</Label>
+              <Input name="channel" placeholder="public:test" />
+              <Label>Payload</Label>
+              <Input
+                name="payload"
+                defaultValue='{ "message": "hello from supamocka" }'
+              />
+              <div className="flex justify-end mt-4">
+                <Button type="submit">Send</Button>
+              </div>
+            </form>
+          </section>
+        );
+      case "storage":
+        if (!hasSettings) {
+          return renderUnavailable(
+            "Add your Supabase settings to use storage tools."
+          );
+        }
+
+        return (
+          <div className="space-y-6">
+            <section className="rounded-lg border bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">Upload files</h2>
+              <form
+                className="mt-4 space-y-2"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+
+                  const formData = new FormData(e.currentTarget);
+                  const file = formData.get("file") as File;
+                  const bucket = formData.get("bucket") as string;
+                  const fileName = formData.get("fileName") as string;
+
+                  const randomFileName = faker.string.uuid();
+
+                  const res = supaClient()
+                    .storage.from(bucket)
+                    .upload((fileName || file.name) + randomFileName, file)
+                    .then((res) => {
+                      if (res.error) {
+                        throw res.error;
+                      }
+                      return res.data;
+                    });
+
+                  toast.promise(res, {
+                    loading: "Uploading...",
+                    success: "Uploaded",
+                    error: (error) => "Error uploading: " + error.message,
+                  });
+                }}
+              >
+                <Label>Bucket</Label>
+                <Input name="bucket" defaultValue="test" />
+                <Button
+                  className="mt-2"
+                  type="button"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const res = supaClient()
+                      .storage.createBucket("test")
+                      .then((res) => {
+                        if (res.error) {
+                          throw res.error;
+                        }
+                        return res.data;
+                      });
+
+                    toast.promise(res, {
+                      loading: "Creating bucket",
+                      success: "Bucket created",
+                      error: (error) => "Error creating bucket: " + error.message,
+                    });
+                  }}
+                >
+                  Create bucket
+                </Button>
+                <Label>File name</Label>
+                <Input
+                  name="fileName"
+                  placeholder="Leave empty for random"
+                />
+                <Label>File</Label>
+                <Input name="file" type="file" />
+                <div className="flex justify-end mt-4">
+                  <Button type="submit">Upload</Button>
+                </div>
+              </form>
+            </section>
+
+            <section className="rounded-lg border bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">List files</h2>
+              <div className="mt-4 max-h-[200px] overflow-y-auto border rounded-md">
+                {files.map((file) => (
+                  <div
+                    key={file}
+                    className="min-h-[30px] border-b p-2 hover:bg-zinc-100"
                   >
-                    <Label>Bucket</Label>
-                    <Input name="bucket" defaultValue="test" />
-                    <div className="flex justify-end mt-4">
-                      <Button>Load files</Button>
-                    </div>
-                  </form>
-                </AccordionContent>
-              </AccordionItem>
-            </>
-          )}
-        </Accordion>
+                    {file}
+                  </div>
+                ))}
+              </div>
+              <form
+                className="mt-4 space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  const bucket = formData.get("bucket") as string;
+                  loadFiles(bucket);
+                }}
+              >
+                <Label>Bucket</Label>
+                <Input name="bucket" defaultValue="test" />
+                <div className="flex justify-end mt-4">
+                  <Button type="submit">Load files</Button>
+                </div>
+              </form>
+            </section>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Toaster position="top-right" />
+      <div className="flex min-h-screen w-full flex-col md:flex-row">
+        <aside className="w-full border-b bg-muted/40 p-6 md:w-72 md:border-b-0 md:border-r">
+          <div className="space-y-6">
+            <div>
+              <Label htmlFor="project-select" className="text-xs uppercase text-muted-foreground">
+                Active project
+              </Label>
+              <div className="mt-2 flex items-center gap-2">
+                <select
+                  id="project-select"
+                  className="flex-1 min-w-0 truncate rounded-md border bg-background px-3 py-2 text-sm shadow-sm"
+                  value={settings.id}
+                  onChange={(event) => handleSelectProject(event.target.value)}
+                  title={activeProject?.name || "Unnamed project"}
+                >
+                  {projects.map((project) => (
+                    <option
+                      key={project.id}
+                      value={project.id}
+                      title={project.name || "Unnamed project"}
+                    >
+                      {project.name || "Unnamed project"}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={createProject}
+                  aria-label="Create project"
+                  className="shrink-0"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="sr-only">Create project</span>
+                </Button>
+              </div>
+            </div>
+
+            <nav className="space-y-1">
+              {SECTIONS.map((section) => {
+                const isActive = activeSection === section.id;
+                const disabled = section.requiresSettings && !hasSettings;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    disabled={disabled}
+                    className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow"
+                        : "hover:bg-muted"
+                    } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+                  >
+                    {section.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+        <main className="flex-1 overflow-y-auto p-6">
+          <header className="space-y-2 border-b pb-4">
+            <h1 className="text-2xl font-semibold">supamocka</h1>
+            <p className="text-sm text-muted-foreground">
+              This is a tool to mock usage for a Supabase project and test different features. The API key will be stored
+              in your browser's local storage.
+              <strong className="ml-1">Do not use for real or production projects.</strong>
+            </p>
+          </header>
+          <div className="mt-6 space-y-6">{renderSection()}</div>
+          <footer className="mt-10 text-sm text-muted-foreground">
+            <a target="_blank" href="https://github.com/jordienr/supamocka" rel="noreferrer">
+              GitHub
+            </a>
+          </footer>
+        </main>
       </div>
-      <footer className="text-xs text-center text-gray-500 mt-4">
-        <a target="_blank" href="https://github.com/jordienr/supamocka">
-          GitHub
-        </a>
-      </footer>
     </div>
   );
 }
