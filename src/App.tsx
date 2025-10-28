@@ -936,13 +936,15 @@ export default function App() {
           </div>
         </aside>
         <main className="flex-1 overflow-y-auto p-6">
-          <header className="space-y-2 border-b pb-4">
+          <header className="border-b pb-4 flex items-center gap-4">
+          <img src="/supamockalogo.png" alt="supamocka" className="w-20 h-20 rounded-full" />
+          <div className="">
             <h1 className="text-2xl font-semibold">supamocka</h1>
-            <p className="text-sm text-muted-foreground">
-              This is a tool to mock usage for a Supabase project and test different features. The API key will be stored
+            <p className="text-muted-foreground">
+              A tool to mock usage for a Supabase projects. The API key will be stored
               in your browser's local storage.
-              <strong className="ml-1">Do not use for real or production projects.</strong>
             </p>
+          </div>
           </header>
           <div className="mt-6 space-y-6">{renderSection()}</div>
           <footer className="mt-10 text-sm text-muted-foreground">
