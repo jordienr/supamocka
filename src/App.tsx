@@ -152,6 +152,7 @@ export default function App() {
   // $npx shadcn@latest add http://localhost:3004/ui/r/current-user-avatar-react.json
 
   const [email, setEmail] = useState("");
+  const [shouldConfirmEmail, setShouldConfirmEmail] = useState(true);
 
   function supaClient() {
     return createClient(settings.url, settings.publicKey);
@@ -322,6 +323,45 @@ export default function App() {
     </div>
   );
 
+  const handleCreateUser = (emailAddress: string) => {
+    const normalizedEmail = emailAddress.trim();
+    if (!normalizedEmail) {
+      toast.error("Enter an email before creating a user");
+      return;
+    }
+
+    setEmail(normalizedEmail);
+
+    const request = supaClient()
+      .auth.admin.createUser({
+        email: normalizedEmail,
+        password: "TestPassword1",
+        email_confirm: shouldConfirmEmail,
+      })
+      .then((res) => {
+        if (res.error) {
+          throw res.error;
+        }
+        return res.data;
+      })
+      .then(async (data) => {
+        try {
+          const response = await supaClient().auth.admin.listUsers();
+          setUsers(response.data?.users ?? []);
+        } catch (error) {
+          console.log(error);
+        }
+        return data;
+      });
+
+    reqHandler({
+      request,
+      loadingMessage: "Creating user",
+      successMessage: "User created",
+      errorMessage: "Error creating user",
+    });
+  };
+
   const renderSection = () => {
     switch (activeSection) {
       case "settings":
@@ -401,28 +441,9 @@ export default function App() {
               <h2 className="text-lg font-semibold">Create user</h2>
               <form
                 className="mt-4"
-                onSubmit={async (e) => {
+                onSubmit={(e) => {
                   e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  const emailConfirm = formData.get("email-confirm") as string;
-                  const request = supaClient()
-                    .auth.admin.createUser({
-                      email,
-                      password: "TestPassword1",
-                      email_confirm: emailConfirm === "on",
-                    })
-                    .then((res) => {
-                      if (res.error) {
-                        throw res.error;
-                      }
-                      return res.data;
-                    });
-                  reqHandler({
-                    request,
-                    loadingMessage: "Creating user",
-                    successMessage: "User created",
-                    errorMessage: "Error creating user",
-                  });
+                  handleCreateUser(email);
                 }}
               >
                 <Label className="flex items-center gap-2">
@@ -440,7 +461,8 @@ export default function App() {
                     id="email-confirm"
                     name="email-confirm"
                     type="checkbox"
-                    defaultChecked={true}
+                    checked={shouldConfirmEmail}
+                    onChange={(event) => setShouldConfirmEmail(event.target.checked)}
                   />
                   Confirm email
                 </Label>
@@ -456,7 +478,9 @@ export default function App() {
                   <Button
                     type="button"
                     onClick={() => {
-                      setEmail(faker.internet.exampleEmail());
+                      const generatedEmail = faker.internet.exampleEmail();
+                      setEmail(generatedEmail);
+                      handleCreateUser(generatedEmail);
                     }}
                   >
                     Random + Create
@@ -753,12 +777,17 @@ export default function App() {
               <div className="mt-2 flex items-center gap-2">
                 <select
                   id="project-select"
-                  className="flex-1 rounded-md border bg-background px-3 py-2 text-sm shadow-sm"
+                  className="flex-1 min-w-0 truncate rounded-md border bg-background px-3 py-2 text-sm shadow-sm"
                   value={settings.id}
                   onChange={(event) => handleSelectProject(event.target.value)}
+                  title={activeProject?.name || "Unnamed project"}
                 >
                   {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
+                    <option
+                      key={project.id}
+                      value={project.id}
+                      title={project.name || "Unnamed project"}
+                    >
                       {project.name || "Unnamed project"}
                     </option>
                   ))}
@@ -769,6 +798,7 @@ export default function App() {
                   size="icon"
                   onClick={createProject}
                   aria-label="Create project"
+                  className="shrink-0"
                 >
                   <Plus className="h-4 w-4" />
                   <span className="sr-only">Create project</span>
