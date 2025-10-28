@@ -3,6 +3,7 @@
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
+import { Plus } from "lucide-react";
 import { createClient, User } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { faker } from "@faker-js/faker";
@@ -375,6 +376,16 @@ export default function App() {
                 </div>
               </form>
             </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={deleteActiveProject}
+                disabled={!activeProject}
+              >
+                Delete project
+              </Button>
+            </div>
           </section>
         );
       case "auth":
@@ -732,37 +743,35 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster position="top-right" />
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col md:flex-row">
+      <div className="flex min-h-screen w-full flex-col md:flex-row">
         <aside className="w-full border-b bg-muted/40 p-6 md:w-72 md:border-b-0 md:border-r">
           <div className="space-y-6">
             <div>
               <Label htmlFor="project-select" className="text-xs uppercase text-muted-foreground">
                 Active project
               </Label>
-              <select
-                id="project-select"
-                className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm"
-                value={settings.id}
-                onChange={(event) => handleSelectProject(event.target.value)}
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name || "Unnamed project"}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-3 flex flex-col gap-2">
-                <Button type="button" variant="outline" className="w-full" onClick={createProject}>
-                  New project
-                </Button>
+              <div className="mt-2 flex items-center gap-2">
+                <select
+                  id="project-select"
+                  className="flex-1 rounded-md border bg-background px-3 py-2 text-sm shadow-sm"
+                  value={settings.id}
+                  onChange={(event) => handleSelectProject(event.target.value)}
+                >
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name || "Unnamed project"}
+                    </option>
+                  ))}
+                </select>
                 <Button
                   type="button"
-                  variant="destructive"
-                  className="w-full"
-                  onClick={deleteActiveProject}
-                  disabled={!activeProject}
+                  variant="outline"
+                  size="icon"
+                  onClick={createProject}
+                  aria-label="Create project"
                 >
-                  Delete project
+                  <Plus className="h-4 w-4" />
+                  <span className="sr-only">Create project</span>
                 </Button>
               </div>
             </div>
