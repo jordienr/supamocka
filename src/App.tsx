@@ -101,6 +101,9 @@ export default function App() {
   };
 
   const createProject = () => {
+    if (currentUser) {
+      handleSelectUser("");
+    }
     const id = generateProjectId();
     setProjects((prev) => {
       const project: Project = {
@@ -128,6 +131,10 @@ export default function App() {
       return;
     }
 
+    if (currentUser) {
+      handleSelectUser("");
+    }
+
     setProjects((prev) => {
       const updated = prev.filter((project) => project.id !== activeProject.id);
       if (!updated.length) {
@@ -144,6 +151,10 @@ export default function App() {
   const handleSelectProject = (id: string) => {
     if (id === activeProject?.id) {
       return;
+    }
+
+    if (currentUser) {
+      handleSelectUser("");
     }
     setActiveProjectId(id);
     toast.success("Project selected");
@@ -209,6 +220,7 @@ export default function App() {
   }, [hasSettings, isPolling, pollingEndpoint, pollingInterval, settings.publicKey, settings.url]);
 
   const [users, setUsers] = useLocalStorage<User[]>("users", []);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   useEffect(() => {
     if (!hasSettings) {
@@ -222,12 +234,22 @@ export default function App() {
         .then((res) => res.data);
       setUsers(res?.users);
     };
+    setUsers([]);
     fetchUsers();
   }, [hasSettings, settings.publicKey, settings.url, setUsers]);
 
-  const [files, setFiles] = useState<string[]>([]);
-
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(null);
+    setSelectedUserId("");
+  }, [settings.id]);
+
+  useEffect(() => {
+    setSelectedUserId(currentUser?.id ?? "");
+  }, [currentUser?.id]);
+
+  const [files, setFiles] = useState<string[]>([]);
 
   useEffect(() => {
     if (!hasSettings) {
@@ -362,6 +384,70 @@ export default function App() {
     });
   };
 
+  const handleSelectUser = (userId: string) => {
+    const previousUserId = currentUser?.id ?? "";
+
+    if (userId === previousUserId) {
+      return;
+    }
+
+    if (!userId) {
+      setSelectedUserId("");
+      const signOutPromise = supaClient()
+        .auth.signOut()
+        .then(({ error }) => {
+          if (error) {
+            throw error;
+          }
+          setCurrentUser(null);
+          setSelectedUserId("");
+        });
+
+      signOutPromise.catch(() => {
+        setSelectedUserId(previousUserId);
+      });
+
+      toast.promise(signOutPromise, {
+        loading: "Signing out",
+        success: "Signed out",
+        error: () => "Error signing out",
+      });
+
+      return;
+    }
+
+    const user = users.find((item) => item.id === userId);
+
+    if (!user || !user.email) {
+      toast.error("Selected user is missing an email address");
+      setSelectedUserId(previousUserId);
+      return;
+    }
+
+    const signInPromise = supaClient()
+      .auth.signInWithPassword({
+        email: user.email,
+        password: "TestPassword1",
+      })
+      .then(({ data, error }) => {
+        if (error) {
+          throw error;
+        }
+        setCurrentUser(data.user);
+        return data.user;
+      });
+
+    signInPromise.catch(() => {
+      setSelectedUserId(previousUserId);
+    });
+
+    toast.promise(signInPromise, {
+      loading: "Signing in",
+      success: () => `Logged in as ${user.email}`,
+      error: () => "Error logging in",
+    });
+  };
+
   const renderSection = () => {
     switch (activeSection) {
       case "settings":
@@ -373,6 +459,7 @@ export default function App() {
                 <span className="text-sm">{hasSettings ? "✅" : "❌"}</span>
               </div>
               <form
+                key={settings.id || "no-project"}
                 onSubmit={(e) => {
                   e.preventDefault();
 
@@ -508,10 +595,7 @@ export default function App() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      supaClient().auth.signOut().then(() => {
-                        setCurrentUser(null);
-                        toast.success("Signed out");
-                      });
+                      handleSelectUser("");
                     }}
                   >
                     Sign out
@@ -552,18 +636,9 @@ export default function App() {
                     <span className="font-medium">{user.email}</span>
                     <Button
                       variant="outline"
-                      onClick={async () => {
-                        try {
-                          const res = await supaClient().auth.signInWithPassword({
-                            email: user.email || "",
-                            password: "TestPassword1",
-                          });
-                          setCurrentUser(res.data?.user);
-                          toast.success("Logged in as " + user.email);
-                        } catch (error) {
-                          console.log(error);
-                          toast.error("Error logging in");
-                        }
+                      onClick={() => {
+                        setSelectedUserId(user.id);
+                        handleSelectUser(user.id);
                       }}
                     >
                       Mock Login
@@ -803,6 +878,37 @@ export default function App() {
                   <Plus className="h-4 w-4" />
                   <span className="sr-only">Create project</span>
                 </Button>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="user-select" className="text-xs uppercase text-muted-foreground">
+                Active user
+              </Label>
+              <div className="mt-2">
+                <select
+                  id="user-select"
+                  className="w-full truncate rounded-md border bg-background px-3 py-2 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  value={selectedUserId}
+                  disabled={!hasSettings || !users.length}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedUserId(value);
+                    handleSelectUser(value);
+                  }}
+                  title={
+                    selectedUserId
+                      ? users.find((user) => user.id === selectedUserId)?.email || "Unnamed user"
+                      : "No active user"
+                  }
+                >
+                  <option value="">No active user</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id} title={user.email || "Unnamed user"}>
+                      {user.email || "Unnamed user"}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
