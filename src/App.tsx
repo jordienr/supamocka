@@ -236,7 +236,7 @@ export default function App() {
     };
     setUsers([]);
     fetchUsers();
-  }, [hasSettings, settings.publicKey, settings.url, setUsers]);
+  }, [hasSettings, settings.publicKey, settings.url]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
