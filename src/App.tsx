@@ -266,7 +266,7 @@ export default function App() {
       .auth.getUser()
       .then(({ data, error }) => {
         if (error) {
-          toast.error("Error getting user: " + error.message);
+          console.error("Error getting user: " + error.message);
           return;
         }
         setCurrentUser(data.user);
