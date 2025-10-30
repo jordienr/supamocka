@@ -3,9 +3,9 @@
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
-import { Plus } from "lucide-react";
+import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { createClient, User } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { faker } from "@faker-js/faker";
 import { Toaster, toast } from "sonner";
 import { useLocalStorage } from "@uidotdev/usehooks";
@@ -43,6 +43,39 @@ export default function App() {
     "active-section",
     "settings"
   );
+
+  const [currentPath, setCurrentPath] = useState(() => {
+    if (typeof window === "undefined") {
+      return "/";
+    }
+    return window.location.pathname || "/";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname || "/");
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigate = useCallback((path: string) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.location.pathname === path) {
+      return;
+    }
+
+    window.history.pushState({}, "", path);
+    setCurrentPath(path);
+  }, []);
 
   useEffect(() => {
     if (!projects.length) {
@@ -88,16 +121,25 @@ export default function App() {
 
   const hasSettings = Boolean(settings.url && settings.publicKey);
 
+  const updateProjectById = (projectId: string, values: Partial<Project>) => {
+    if (!projectId) {
+      return;
+    }
+
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === projectId ? { ...project, ...values } : project
+      )
+    );
+  };
+
   const updateActiveProject = (values: Partial<Project>) => {
-    setProjects((prev) => {
-      if (!prev.length) {
-        return prev;
-      }
-      const targetId = activeProject?.id ?? prev[0].id;
-      return prev.map((project) =>
-        project.id === targetId ? { ...project, ...values } : project
-      );
-    });
+    if (!projects.length) {
+      return;
+    }
+
+    const targetId = activeProject?.id ?? projects[0].id;
+    updateProjectById(targetId, values);
   };
 
   const createProject = () => {
@@ -105,8 +147,9 @@ export default function App() {
       handleSelectUser("");
     }
     const id = generateProjectId();
+    let project: Project | null = null;
     setProjects((prev) => {
-      const project: Project = {
+      project = {
         id,
         name: `Project ${prev.length + 1}`,
         url: "",
@@ -116,6 +159,29 @@ export default function App() {
     });
     setActiveProjectId(id);
     toast.success("Project created");
+    return project!;
+  };
+
+  const deleteProjectById = (projectId: string) => {
+    if (!projectId) {
+      return;
+    }
+
+    if (currentUser) {
+      handleSelectUser("");
+    }
+
+    setProjects((prev) => {
+      const updated = prev.filter((project) => project.id !== projectId);
+      if (!updated.length) {
+        setActiveProjectId(null);
+      } else if (projectId === activeProjectId) {
+        setActiveProjectId(updated[0].id);
+      }
+      return updated;
+    });
+
+    toast.success("Project deleted");
   };
 
   const deleteActiveProject = () => {
@@ -131,21 +197,7 @@ export default function App() {
       return;
     }
 
-    if (currentUser) {
-      handleSelectUser("");
-    }
-
-    setProjects((prev) => {
-      const updated = prev.filter((project) => project.id !== activeProject.id);
-      if (!updated.length) {
-        setActiveProjectId(null);
-      } else if (activeProject.id === activeProjectId) {
-        setActiveProjectId(updated[0].id);
-      }
-      return updated;
-    });
-
-    toast.success("Project deleted");
+    deleteProjectById(activeProject.id);
   };
 
   const handleSelectProject = (id: string) => {
@@ -839,12 +891,28 @@ export default function App() {
     }
   };
 
+  const isProjectsPage = currentPath === "/projects";
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster position="top-right" />
       <div className="flex min-h-screen w-full flex-col md:flex-row">
         <aside className="w-full border-b bg-muted/40 p-6 md:w-72 md:border-b-0 md:border-r">
           <div className="space-y-6">
+            <div>
+              <button
+                type="button"
+                onClick={() => navigate("/projects")}
+                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                  isProjectsPage
+                    ? "bg-primary text-primary-foreground shadow"
+                    : "hover:bg-muted"
+                }`}
+                aria-current={isProjectsPage ? "page" : undefined}
+              >
+                Projects
+              </button>
+            </div>
             <div>
               <Label htmlFor="project-select" className="text-xs uppercase text-muted-foreground">
                 Active project
@@ -920,7 +988,12 @@ export default function App() {
                   <button
                     key={section.id}
                     type="button"
-                    onClick={() => setActiveSection(section.id)}
+                    onClick={() => {
+                      setActiveSection(section.id);
+                      if (isProjectsPage) {
+                        navigate("/");
+                      }
+                    }}
                     disabled={disabled}
                     className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
                       isActive
@@ -946,7 +1019,23 @@ export default function App() {
             </p>
           </div>
           </header>
-          <div className="mt-6 space-y-6">{renderSection()}</div>
+          <div className="mt-6 space-y-6">
+            {isProjectsPage ? (
+              <ProjectsPage
+                projects={projects}
+                activeProjectId={activeProject?.id ?? null}
+                onCreateProject={createProject}
+                onDeleteProject={deleteProjectById}
+                onSelectProject={(projectId) => {
+                  handleSelectProject(projectId);
+                  navigate("/");
+                }}
+                onUpdateProject={updateProjectById}
+              />
+            ) : (
+              renderSection()
+            )}
+          </div>
           <footer className="mt-10 text-sm text-muted-foreground">
             <a target="_blank" href="https://github.com/jordienr/supamocka" rel="noreferrer">
               GitHub
@@ -954,6 +1043,180 @@ export default function App() {
           </footer>
         </main>
       </div>
+    </div>
+  );
+}
+
+type ProjectsPageProps = {
+  projects: Project[];
+  activeProjectId: string | null;
+  onCreateProject: () => Project;
+  onDeleteProject: (projectId: string) => void;
+  onSelectProject: (projectId: string) => void;
+  onUpdateProject: (projectId: string, values: Partial<Project>) => void;
+};
+
+function ProjectsPage({
+  projects,
+  activeProjectId,
+  onCreateProject,
+  onDeleteProject,
+  onSelectProject,
+  onUpdateProject,
+}: ProjectsPageProps) {
+  const handleDelete = (project: Project) => {
+    const shouldDelete = window.confirm(
+      `Delete project "${project.name || "Unnamed project"}"?`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    onDeleteProject(project.id);
+  };
+
+  const handleOpenUrl = (url: string) => {
+    if (!url) {
+      return;
+    }
+
+    const targetUrl = url.startsWith("http") ? url : `https://${url}`;
+    window.open(targetUrl, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold">Projects</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage your Supamocka projects.
+          </p>
+        </div>
+        <Button type="button" onClick={() => onCreateProject()}>
+          <Plus className="mr-2 h-4 w-4" />
+          New project
+        </Button>
+      </div>
+
+      {projects.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/40 p-6 text-sm text-muted-foreground">
+          No projects yet. Create one to get started.
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {projects.map((project) => {
+            const isActive = project.id === activeProjectId;
+
+            return (
+              <section
+                key={project.id}
+                className={`space-y-4 rounded-lg border bg-card p-6 shadow-sm transition-shadow ${
+                  isActive ? "border-primary shadow-md" : ""
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      {project.name || "Unnamed project"}
+                    </h3>
+                    <p className="text-sm text-muted-foreground break-all">
+                      {project.url || "No API URL provided"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isActive ? (
+                      <span className="text-xs font-medium uppercase text-primary">
+                        Active
+                      </span>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onSelectProject(project.id)}
+                    >
+                      Go to project
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(project)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete project</span>
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor={`project-name-${project.id}`}>
+                      Project name
+                    </Label>
+                    <Input
+                      id={`project-name-${project.id}`}
+                      value={project.name}
+                      onChange={(event) =>
+                        onUpdateProject(project.id, {
+                          name: event.target.value,
+                        })
+                      }
+                      placeholder="Project name"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor={`project-url-${project.id}`}>API URL</Label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Input
+                        id={`project-url-${project.id}`}
+                        value={project.url}
+                        onChange={(event) =>
+                          onUpdateProject(project.id, {
+                            url: event.target.value,
+                          })
+                        }
+                        placeholder="https://project.supabase.co"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleOpenUrl(project.url)}
+                        disabled={!project.url}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        <span className="sr-only">Open project URL</span>
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor={`project-key-${project.id}`}>
+                      Service role key
+                    </Label>
+                    <Input
+                      id={`project-key-${project.id}`}
+                      value={project.publicKey}
+                      onChange={(event) =>
+                        onUpdateProject(project.id, {
+                          publicKey: event.target.value,
+                        })
+                      }
+                      placeholder="Service role key"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs text-muted-foreground">
+                      Project ID: <span className="font-mono">{project.id}</span>
+                    </p>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
